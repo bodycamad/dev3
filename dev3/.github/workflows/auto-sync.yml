@@ -15,12 +15,12 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
       with:
         fetch-depth: 0  # Fetch all history for better analysis
     
     - name: Setup Node.js (if needed)
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
       with:
         node-version: '18'
         cache: 'npm'
@@ -62,7 +62,7 @@ jobs:
       continue-on-error: true
     
     - name: Security scan
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8  # v0.33.1
       with:
         scan-type: 'fs'
         scan-ref: '.'
@@ -83,7 +83,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
     
