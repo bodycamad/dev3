@@ -58,17 +58,15 @@ function Write-InstallLog {
             default { "White" }
         }
         
-        if ($Level -eq "HEADER") {
-            Write-Host ""
-            Write-Host "═══ $Message ═══" -ForegroundColor $color
-        } else {
-            $prefix = switch ($Level) {
-                "SUCCESS" { "✅" }
-                "WARNING" { "⚠️" }
-                "ERROR" { "❌" }
-                default { "ℹ️" }
+        switch ($Level) {
+            "HEADER" { 
+                Write-Information "" -InformationAction Continue
+                Write-Information "═══ $Message ═══" -InformationAction Continue 
             }
-            Write-Host "$prefix $Message" -ForegroundColor $color
+            "SUCCESS" { Write-Information "✅ $Message" -InformationAction Continue }
+            "WARNING" { Write-Warning "⚠️ $Message" }
+            "ERROR" { Write-Error "❌ $Message" }
+            default { Write-Information "ℹ️ $Message" -InformationAction Continue }
         }
     }
 }
@@ -138,6 +136,8 @@ function Test-Prerequisites {
 
 # Install auto-sync system
 function Install-AutoSyncSystem {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
     Write-InstallLog "Installing $($Config.ProductName) v$($Config.Version)" "HEADER"
     
     try {
@@ -159,7 +159,9 @@ function Install-AutoSyncSystem {
             }
             
             # Run scheduler setup
-            $result = & $schedulerScript @schedulerArgs
+            if ($PSCmdlet.ShouldProcess("Windows Task Scheduler", "Install Git Auto-Sync scheduled task")) {
+                $result = & $schedulerScript @schedulerArgs
+            }
             if ($LASTEXITCODE -eq 0) {
                 Write-InstallLog "Task Scheduler setup completed" "SUCCESS"
             }
@@ -173,43 +175,51 @@ function Install-AutoSyncSystem {
         
         # Step 3: Create desktop shortcuts
         if ($CreateDesktopShortcuts) {
-            Write-InstallLog "Creating desktop shortcuts..." "INFO"
-            Create-DesktopShortcuts
+            if ($PSCmdlet.ShouldProcess("Desktop", "Create desktop shortcuts")) {
+                Write-InstallLog "Creating desktop shortcuts..." "INFO"
+                Create-DesktopShortcuts
+            }
         }
         
         # Step 4: Create start menu entries
-        Write-InstallLog "Creating Start Menu entries..." "INFO"
-        Create-StartMenuEntries
+        if ($PSCmdlet.ShouldProcess("Start Menu", "Create start menu entries")) {
+            Write-InstallLog "Creating Start Menu entries..." "INFO"
+            Create-StartMenuEntries
+        }
         
         # Step 5: Set up auto-start
-        Write-InstallLog "Configuring auto-start..." "INFO"
-        Setup-AutoStart
+        if ($PSCmdlet.ShouldProcess("System startup", "Configure auto-start")) {
+            Write-InstallLog "Configuring auto-start..." "INFO"
+            Setup-AutoStart
+        }
         
         # Step 6: Start service if requested
         if ($StartImmediately) {
-            Write-InstallLog "Starting Git Auto-Sync service..." "INFO"
-            Start-AutoSyncService
+            if ($PSCmdlet.ShouldProcess("Git Auto-Sync Service", "Start service")) {
+                Write-InstallLog "Starting Git Auto-Sync service..." "INFO"
+                Start-AutoSyncService
+            }
         }
         
         Write-InstallLog "Installation completed successfully!" "SUCCESS"
         Write-InstallLog "Git Auto-Sync is now configured and ready to use." "SUCCESS"
         
         if (-not $Silent) {
-            Write-Host ""
-            Write-Host "Installation Summary:" -ForegroundColor Cyan
-            Write-Host "━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-            Write-Host "• Scheduled Task: Configured" -ForegroundColor Green
-            Write-Host "• Desktop Shortcuts: Created" -ForegroundColor Green
-            Write-Host "• Start Menu: Added" -ForegroundColor Green
-            Write-Host "• Auto-Start: Enabled" -ForegroundColor Green
+            Write-Information "" -InformationAction Continue
+            Write-Information "Installation Summary:" -InformationAction Continue
+            Write-Information "━━━━━━━━━━━━━━━━━━━━" -InformationAction Continue
+            Write-Information "• Scheduled Task: Configured" -InformationAction Continue
+            Write-Information "• Desktop Shortcuts: Created" -InformationAction Continue
+            Write-Information "• Start Menu: Added" -InformationAction Continue
+            Write-Information "• Auto-Start: Enabled" -InformationAction Continue
             if ($StartImmediately) {
-                Write-Host "• Service Status: Running" -ForegroundColor Green
+                Write-Information "• Service Status: Running" -InformationAction Continue
             }
-            Write-Host ""
-            Write-Host "Quick Commands:" -ForegroundColor Yellow
-            Write-Host "• Monitor: .\git-sync-monitor.ps1" -ForegroundColor White
-            Write-Host "• Manual Sync: .\sync.bat" -ForegroundColor White
-            Write-Host "• Uninstall: .\install-auto-sync.ps1 -Action Uninstall" -ForegroundColor White
+            Write-Information "" -InformationAction Continue
+            Write-Information "Quick Commands:" -InformationAction Continue
+            Write-Information "• Monitor: .\git-sync-monitor.ps1" -InformationAction Continue
+            Write-Information "• Manual Sync: .\sync.bat" -InformationAction Continue
+            Write-Information "• Uninstall: .\install-auto-sync.ps1 -Action Uninstall" -InformationAction Continue
         }
         
         return $true
@@ -222,23 +232,31 @@ function Install-AutoSyncSystem {
 
 # Uninstall auto-sync system
 function Uninstall-AutoSyncSystem {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
     Write-InstallLog "Uninstalling $($Config.ProductName)" "HEADER"
     
     try {
         # Stop running processes
-        Write-InstallLog "Stopping auto-sync processes..." "INFO"
-        Stop-AutoSyncProcesses
+        if ($PSCmdlet.ShouldProcess("Auto-sync processes", "Stop running processes")) {
+            Write-InstallLog "Stopping auto-sync processes..." "INFO"
+            Stop-AutoSyncProcesses
+        }
         
         # Remove scheduled tasks
-        Write-InstallLog "Removing scheduled tasks..." "INFO"
-        $schedulerScript = Join-Path $Config.InstallPath "setup-task-scheduler.ps1"
-        if (Test-Path $schedulerScript) {
-            & $schedulerScript -Action Uninstall
+        if ($PSCmdlet.ShouldProcess("Scheduled tasks", "Remove scheduled tasks")) {
+            Write-InstallLog "Removing scheduled tasks..." "INFO"
+            $schedulerScript = Join-Path $Config.InstallPath "setup-task-scheduler.ps1"
+            if (Test-Path $schedulerScript) {
+                & $schedulerScript -Action Uninstall
+            }
         }
         
         # Remove shortcuts
-        Write-InstallLog "Removing shortcuts..." "INFO"
-        Remove-Shortcuts
+        if ($PSCmdlet.ShouldProcess("Desktop shortcuts", "Remove shortcuts")) {
+            Write-InstallLog "Removing shortcuts..." "INFO"
+            Remove-Shortcuts
+        }
         
         # Remove start menu entries
         Write-InstallLog "Removing Start Menu entries..." "INFO"
@@ -332,26 +350,32 @@ function Get-SystemStatus {
 
 # Helper functions
 function Create-DesktopShortcuts {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
     try {
         $shell = New-Object -ComObject WScript.Shell
         $desktop = [Environment]::GetFolderPath("Desktop")
         
         # Monitor shortcut
-        $monitorShortcut = $shell.CreateShortcut((Join-Path $desktop "Git Auto-Sync Monitor.lnk"))
-        $monitorShortcut.TargetPath = "powershell.exe"
-        $monitorShortcut.Arguments = "-ExecutionPolicy Bypass -File `"$(Join-Path $Config.InstallPath 'git-sync-monitor.ps1')`""
-        $monitorShortcut.WorkingDirectory = $Config.InstallPath
-        $monitorShortcut.Description = "Git Auto-Sync Status Monitor"
-        $monitorShortcut.IconLocation = "shell32.dll,16"
-        $monitorShortcut.Save()
+        if ($PSCmdlet.ShouldProcess((Join-Path $desktop "Git Auto-Sync Monitor.lnk"), "Create desktop shortcut")) {
+            $monitorShortcut = $shell.CreateShortcut((Join-Path $desktop "Git Auto-Sync Monitor.lnk"))
+            $monitorShortcut.TargetPath = "powershell.exe"
+            $monitorShortcut.Arguments = "-ExecutionPolicy Bypass -File `"$(Join-Path $Config.InstallPath 'git-sync-monitor.ps1')`""
+            $monitorShortcut.WorkingDirectory = $Config.InstallPath
+            $monitorShortcut.Description = "Git Auto-Sync Status Monitor"
+            $monitorShortcut.IconLocation = "shell32.dll,16"
+            $monitorShortcut.Save()
+        }
         
         # Quick sync shortcut
-        $syncShortcut = $shell.CreateShortcut((Join-Path $desktop "Quick Git Sync.lnk"))
-        $syncShortcut.TargetPath = Join-Path $Config.InstallPath "sync.bat"
-        $syncShortcut.WorkingDirectory = $Config.InstallPath
-        $syncShortcut.Description = "Quick Git Sync"
-        $syncShortcut.IconLocation = "shell32.dll,13"
-        $syncShortcut.Save()
+        if ($PSCmdlet.ShouldProcess((Join-Path $desktop "Quick Git Sync.lnk"), "Create desktop shortcut")) {
+            $syncShortcut = $shell.CreateShortcut((Join-Path $desktop "Quick Git Sync.lnk"))
+            $syncShortcut.TargetPath = Join-Path $Config.InstallPath "sync.bat"
+            $syncShortcut.WorkingDirectory = $Config.InstallPath
+            $syncShortcut.Description = "Quick Git Sync"
+            $syncShortcut.IconLocation = "shell32.dll,13"
+            $syncShortcut.Save()
+        }
         
         Write-InstallLog "Desktop shortcuts created" "SUCCESS"
     }
@@ -476,20 +500,20 @@ function Remove-AutoStart {
 }
 
 # Show banner
-function Show-Banner {
+function Write-Banner {
     if (-not $Silent) {
         Clear-Host
-        Write-Host ""
-        Write-Host "╔══════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-        Write-Host "║                    Git Auto-Sync Installer v$($Config.Version)                    ║" -ForegroundColor Cyan  
-        Write-Host "║              Complete GitHub Synchronization Solution           ║" -ForegroundColor Cyan
-        Write-Host "╚══════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
-        Write-Host ""
+        Write-Information "" -InformationAction Continue
+        Write-Information "╔══════════════════════════════════════════════════════════════════╗" -InformationAction Continue
+        Write-Information "║                    Git Auto-Sync Installer v$($Config.Version)                    ║" -InformationAction Continue
+        Write-Information "║              Complete GitHub Synchronization Solution           ║" -InformationAction Continue
+        Write-Information "╚══════════════════════════════════════════════════════════════════╝" -InformationAction Continue
+        Write-Information "" -InformationAction Continue
     }
 }
 
 # Main execution
-Show-Banner
+Write-Banner
 Write-InstallLog "$($Config.ProductName) v$($Config.Version) - Action: $Action"
 
 $success = switch ($Action.ToLower()) {

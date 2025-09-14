@@ -28,7 +28,7 @@ $Config = @{
 }
 
 # Clear screen and show header
-function Show-Header {
+function Write-Header {
     Clear-Host
     Write-Host "═══════════════════════════════════════════════════════════════════" -ForegroundColor $Config.Colors.Header
     Write-Host "                    Git Auto-Sync Monitor v2.0                     " -ForegroundColor $Config.Colors.Header
@@ -102,14 +102,14 @@ function Get-SyncStatus {
         
     }
     catch {
-        Write-Host "Error getting status: $_" -ForegroundColor $Config.Colors.Error
+        Write-Warning "Error getting status: $_"
     }
     
     return $status
 }
 
 # Display status dashboard
-function Show-StatusDashboard {
+function Write-StatusDashboard {
     param([hashtable]$Status)
     
     $healthColor = switch ($Status.HealthStatus) {
@@ -186,7 +186,7 @@ function Show-StatusDashboard {
 }
 
 # Show available commands
-function Show-Commands {
+function Write-Commands {
     Write-Host "Available Commands:" -ForegroundColor $Config.Colors.Accent
     Write-Host "  [D] Dashboard (refresh)" -ForegroundColor $Config.Colors.Info
     Write-Host "  [S] Start auto-sync" -ForegroundColor $Config.Colors.Info
@@ -201,25 +201,25 @@ function Show-Commands {
 
 # Start auto-sync
 function Start-AutoSync {
-    Write-Host "Starting Git Auto-Sync..." -ForegroundColor $Config.Colors.Info
+    Write-Information "Starting Git Auto-Sync..." -InformationAction Continue
     
     try {
         # Try VBS script first (silent)
         if (Test-Path $Config.VBSPath) {
             Start-Process -FilePath "wscript.exe" -ArgumentList "`"$Config.VBSPath`"" -WindowStyle Hidden
-            Write-Host "✅ Auto-sync started via VBS launcher" -ForegroundColor $Config.Colors.Success
+            Write-Information "✅ Auto-sync started via VBS launcher" -InformationAction Continue
         }
         # Fallback to PowerShell
         elseif (Test-Path $Config.ScriptPath) {
             Start-Process -FilePath "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$Config.ScriptPath`" -Watch -Silent" -WindowStyle Hidden
-            Write-Host "✅ Auto-sync started via PowerShell" -ForegroundColor $Config.Colors.Success
+            Write-Information "✅ Auto-sync started via PowerShell" -InformationAction Continue
         }
         else {
-            Write-Host "❌ Auto-sync scripts not found" -ForegroundColor $Config.Colors.Error
+            Write-Error "❌ Auto-sync scripts not found"
         }
     }
     catch {
-        Write-Host "❌ Failed to start auto-sync: $_" -ForegroundColor $Config.Colors.Error
+        Write-Error "❌ Failed to start auto-sync: $_"
     }
     
     Start-Sleep -Seconds 2
@@ -227,7 +227,7 @@ function Start-AutoSync {
 
 # Stop auto-sync
 function Stop-AutoSync {
-    Write-Host "Stopping Git Auto-Sync processes..." -ForegroundColor $Config.Colors.Info
+    Write-Information "Stopping Git Auto-Sync processes..." -InformationAction Continue
     
     try {
         $processes = Get-Process -Name "powershell" -ErrorAction SilentlyContinue | 
@@ -235,21 +235,21 @@ function Stop-AutoSync {
         
         if ($processes) {
             foreach ($proc in $processes) {
-                Write-Host "  Stopping PID: $($proc.Id)" -ForegroundColor $Config.Colors.Info
+                Write-Verbose "  Stopping PID: $($proc.Id)"
                 $proc.CloseMainWindow() | Out-Null
                 Start-Sleep -Milliseconds 500
                 if (!$proc.HasExited) {
                     $proc.Kill()
                 }
             }
-            Write-Host "✅ Auto-sync processes stopped" -ForegroundColor $Config.Colors.Success
+            Write-Information "✅ Auto-sync processes stopped" -InformationAction Continue
         }
         else {
-            Write-Host "ℹ️ No auto-sync processes running" -ForegroundColor $Config.Colors.Info
+            Write-Information "ℹ️ No auto-sync processes running" -InformationAction Continue
         }
     }
     catch {
-        Write-Host "❌ Error stopping processes: $_" -ForegroundColor $Config.Colors.Error
+        Write-Error "❌ Error stopping processes: $_"
     }
     
     Start-Sleep -Seconds 1
@@ -257,14 +257,14 @@ function Stop-AutoSync {
 
 # Restart auto-sync
 function Restart-AutoSync {
-    Write-Host "Restarting Git Auto-Sync..." -ForegroundColor $Config.Colors.Info
+    Write-Information "Restarting Git Auto-Sync..." -InformationAction Continue
     Stop-AutoSync
     Start-Sleep -Seconds 2
     Start-AutoSync
 }
 
 # Show recent logs
-function Show-RecentLogs {
+function Write-RecentLogs {
     Write-Host "Recent Log Entries:" -ForegroundColor $Config.Colors.Accent
     Write-Host "───────────────────" -ForegroundColor $Config.Colors.Accent
     
@@ -280,7 +280,7 @@ function Show-RecentLogs {
         }
     }
     else {
-        Write-Host "Log file not found: $($Config.LogPath)" -ForegroundColor $Config.Colors.Warning
+        Write-Warning "Log file not found: $($Config.LogPath)"
     }
     
     Write-Host ""
@@ -290,7 +290,7 @@ function Show-RecentLogs {
 
 # Run health check
 function Invoke-HealthCheck {
-    Write-Host "Running Health Check..." -ForegroundColor $Config.Colors.Info
+    Write-Information "Running Health Check..." -InformationAction Continue
     Write-Host ""
     
     # Check Git availability
@@ -356,9 +356,9 @@ function Start-InteractiveDashboard {
     $continuousMode = $Continuous
     
     while ($true) {
-        Show-Header
+        Write-Header
         $status = Get-SyncStatus
-        Show-StatusDashboard -Status $status
+        Write-StatusDashboard -Status $status
         
         if ($continuousMode) {
             Write-Host "Continuous Mode Active - Refreshing every $($Config.RefreshInterval) seconds" -ForegroundColor $Config.Colors.Accent
@@ -381,7 +381,7 @@ function Start-InteractiveDashboard {
             }
         }
         else {
-            Show-Commands
+            Write-Commands
             Write-Host "Enter command: " -NoNewline -ForegroundColor $Config.Colors.Accent
             $input = Read-Host
             
@@ -390,7 +390,7 @@ function Start-InteractiveDashboard {
                 'S' { Start-AutoSync }
                 'T' { Stop-AutoSync }
                 'R' { Restart-AutoSync }
-                'L' { Show-RecentLogs }
+                'L' { Write-RecentLogs }
                 'H' { Invoke-HealthCheck }
                 'C' { $continuousMode = $true }
                 'Q' { return }
@@ -410,27 +410,27 @@ switch ($Action.ToLower()) {
     }
     
     "start" {
-        Show-Header
+        Write-Header
         Start-AutoSync
     }
     
     "stop" {
-        Show-Header  
+        Write-Header  
         Stop-AutoSync
     }
     
     "restart" {
-        Show-Header
+        Write-Header
         Restart-AutoSync
     }
     
     "logs" {
-        Show-Header
-        Show-RecentLogs
+        Write-Header
+        Write-RecentLogs
     }
     
     "health" {
-        Show-Header
+        Write-Header
         Invoke-HealthCheck
     }
 }

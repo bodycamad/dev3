@@ -28,14 +28,12 @@ function Write-Log {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logEntry = "[$timestamp] [$Level] $Message"
     
-    Write-Host $logEntry -ForegroundColor $(
-        switch ($Level) {
-            "ERROR" { "Red" }
-            "WARN" { "Yellow" }
-            "SUCCESS" { "Green" }
-            default { "Cyan" }
-        }
-    )
+    switch ($Level) {
+        "ERROR" { Write-Error $logEntry }
+        "WARN" { Write-Warning $logEntry }
+        "SUCCESS" { Write-Information $logEntry -InformationAction Continue }
+        default { Write-Information $logEntry -InformationAction Continue }
+    }
     
     Add-Content -Path $Config.LogPath -Value $logEntry -ErrorAction SilentlyContinue
 }
@@ -64,7 +62,7 @@ function Install-ScheduledTask {
         # Remove existing task if it exists
         $existingTask = Get-ScheduledTask -TaskName $Config.TaskName -ErrorAction SilentlyContinue
         if ($existingTask) {
-            Write-Log "Removing existing task: $($Config.TaskName)" "WARN"
+            Write-Log -Message "Removing existing task: $($Config.TaskName)" -Level "WARN"
             Unregister-ScheduledTask -TaskName $Config.TaskName -Confirm:$false
         }
         
@@ -100,7 +98,7 @@ function Install-ScheduledTask {
         $task = New-ScheduledTask -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Description $Config.TaskDescription
         Register-ScheduledTask -TaskName $Config.TaskName -InputObject $task -Force
         
-        Write-Log "Successfully created scheduled task: $($Config.TaskName)" "SUCCESS"
+        Write-Log -Message "Successfully created scheduled task: $($Config.TaskName)" -Level "SUCCESS"
         
         # Create additional monitoring task (daily health check)
         $monitorAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File `"$($Config.EnhancedScriptPath)`" -CommitMessage `"Scheduled health check`"" -WorkingDirectory $ScriptPath
@@ -109,12 +107,12 @@ function Install-ScheduledTask {
         $monitorTask = New-ScheduledTask -Action $monitorAction -Trigger $monitorTrigger -Settings $monitorSettings -Principal $principal -Description "Daily Git sync health check"
         
         Register-ScheduledTask -TaskName "$($Config.TaskName)_Monitor" -InputObject $monitorTask -Force
-        Write-Log "Created monitoring task: $($Config.TaskName)_Monitor" "SUCCESS"
+        Write-Log -Message "Created monitoring task: $($Config.TaskName)_Monitor" -Level "SUCCESS"
         
         return $true
     }
     catch {
-        Write-Log "Failed to create scheduled task: $_" "ERROR"
+        Write-Log -Message "Failed to create scheduled task: $_" -Level "ERROR"
         return $false
     }
 }
@@ -128,23 +126,23 @@ function Uninstall-ScheduledTask {
         $task = Get-ScheduledTask -TaskName $Config.TaskName -ErrorAction SilentlyContinue
         if ($task) {
             Unregister-ScheduledTask -TaskName $Config.TaskName -Confirm:$false
-            Write-Log "Removed task: $($Config.TaskName)" "SUCCESS"
+            Write-Log -Message "Removed task: $($Config.TaskName)" -Level "SUCCESS"
         }
         else {
-            Write-Log "Task not found: $($Config.TaskName)" "WARN"
+            Write-Log -Message "Task not found: $($Config.TaskName)" -Level "WARN"
         }
         
         # Remove monitor task
         $monitorTask = Get-ScheduledTask -TaskName "$($Config.TaskName)_Monitor" -ErrorAction SilentlyContinue
         if ($monitorTask) {
             Unregister-ScheduledTask -TaskName "$($Config.TaskName)_Monitor" -Confirm:$false
-            Write-Log "Removed monitoring task: $($Config.TaskName)_Monitor" "SUCCESS"
+            Write-Log -Message "Removed monitoring task: $($Config.TaskName)_Monitor" -Level "SUCCESS"
         }
         
         return $true
     }
     catch {
-        Write-Log "Failed to remove scheduled task: $_" "ERROR"
+        Write-Log -Message "Failed to remove scheduled task: $_" -Level "ERROR"
         return $false
     }
 }
@@ -165,7 +163,7 @@ function Get-TaskStatus {
             Write-Log "  Next Run: $($taskInfo.NextRunTime)"
         }
         else {
-            Write-Log "Main task not found: $($Config.TaskName)" "WARN"
+            Write-Log -Message "Main task not found: $($Config.TaskName)" -Level "WARN"
         }
         
         # Check monitor task
@@ -179,7 +177,7 @@ function Get-TaskStatus {
             Write-Log "  Next Run: $($monitorInfo.NextRunTime)"
         }
         else {
-            Write-Log "Monitor task not found: $($Config.TaskName)_Monitor" "WARN"
+            Write-Log -Message "Monitor task not found: $($Config.TaskName)_Monitor" -Level "WARN"
         }
         
         # Check if auto-sync process is running
@@ -188,19 +186,19 @@ function Get-TaskStatus {
         }
         
         if ($syncProcesses) {
-            Write-Log "Auto-sync processes running: $($syncProcesses.Count)" "SUCCESS"
+            Write-Log -Message "Auto-sync processes running: $($syncProcesses.Count)" -Level "SUCCESS"
             foreach ($proc in $syncProcesses) {
                 Write-Log "  PID: $($proc.Id), Started: $($proc.StartTime)"
             }
         }
         else {
-            Write-Log "No auto-sync processes currently running" "WARN"
+            Write-Log -Message "No auto-sync processes currently running" -Level "WARN"
         }
         
         return $true
     }
     catch {
-        Write-Log "Failed to get task status: $_" "ERROR"
+        Write-Log -Message "Failed to get task status: $_" -Level "ERROR"
         return $false
     }
 }
@@ -223,7 +221,7 @@ function New-StartupShortcuts {
         $shortcut.WindowStyle = 7  # Minimized
         $shortcut.Save()
         
-        Write-Log "Created startup shortcut: $shortcutPath" "SUCCESS"
+        Write-Log -Message "Created startup shortcut: $shortcutPath" -Level "SUCCESS"
         
         # Create desktop shortcut for manual control
         $desktopPath = [Environment]::GetFolderPath("Desktop")
@@ -236,12 +234,12 @@ function New-StartupShortcuts {
         $controlShortcut.Description = "Git Auto-Sync Status and Control"
         $controlShortcut.Save()
         
-        Write-Log "Created desktop control shortcut: $desktopShortcut" "SUCCESS"
+        Write-Log -Message "Created desktop control shortcut: $desktopShortcut" -Level "SUCCESS"
         
         return $true
     }
     catch {
-        Write-Log "Failed to create shortcuts: $_" "ERROR"
+        Write-Log -Message "Failed to create shortcuts: $_" -Level "ERROR"
         return $false
     }
 }
@@ -252,14 +250,14 @@ Write-Log "Action: $Action, All Users: $AllUsers, Script Path: $ScriptPath"
 
 # Validate administrator privileges for system tasks
 if ($AllUsers -and -not (Test-Administrator)) {
-    Write-Log "Administrator privileges required for system-wide installation" "ERROR"
+    Write-Log -Message "Administrator privileges required for system-wide installation" -Level "ERROR"
     Write-Log "Please run as Administrator or remove -AllUsers flag"
     exit 1
 }
 
 # Validate script paths
 if (-not (Test-Path $ScriptPath)) {
-    Write-Log "Script path not found: $ScriptPath" "ERROR"
+    Write-Log -Message "Script path not found: $ScriptPath" -Level "ERROR"
     exit 1
 }
 
@@ -270,7 +268,7 @@ $success = switch ($Action.ToLower()) {
         $result = Install-ScheduledTask
         if ($result) {
             New-StartupShortcuts
-            Write-Log "Installation completed successfully!" "SUCCESS"
+            Write-Log -Message "Installation completed successfully!" -Level "SUCCESS"
             Write-Log ""
             Write-Log "Git Auto-Sync will now start automatically with Windows."
             Write-Log "You can check status anytime by running:"
@@ -292,7 +290,7 @@ $success = switch ($Action.ToLower()) {
             if (Test-Path $startupShortcut) { Remove-Item $startupShortcut -Force }
             if (Test-Path $desktopShortcut) { Remove-Item $desktopShortcut -Force }
             
-            Write-Log "Uninstallation completed successfully!" "SUCCESS"
+            Write-Log -Message "Uninstallation completed successfully!" -Level "SUCCESS"
         }
         $result
     }
@@ -302,14 +300,14 @@ $success = switch ($Action.ToLower()) {
     }
     
     default {
-        Write-Log "Invalid action: $Action" "ERROR"
+        Write-Log -Message "Invalid action: $Action" -Level "ERROR"
         Write-Log "Valid actions: Install, Uninstall, Status"
         $false
     }
 }
 
 if (-not $success -and $Action -ne "Status") {
-    Write-Log "Operation failed!" "ERROR"
+    Write-Log -Message "Operation failed!" -Level "ERROR"
     exit 1
 }
 

@@ -6,38 +6,38 @@ param(
     [switch]$Watch = $false
 )
 
-function Sync-GitRepository {
+function Update-GitRepository {
     param([string]$Message)
     
-    Write-Host "Starting Git sync..." -ForegroundColor Green
+    Write-Information "Starting Git sync..." -InformationAction Continue
     
     # Check for changes
     $status = git status --porcelain
     
     if ($status) {
-        Write-Host "Changes detected. Syncing..." -ForegroundColor Yellow
+        Write-Information "Changes detected. Syncing..." -InformationAction Continue
         
         # Add all changes
         git add -A
-        Write-Host "Files staged" -ForegroundColor Cyan
+        Write-Verbose "Files staged"
         
         # Commit
         git commit -m $Message
-        Write-Host "Changes committed" -ForegroundColor Cyan
+        Write-Verbose "Changes committed"
         
         # Push to remote
         git push origin master
-        Write-Host "Changes pushed to GitHub" -ForegroundColor Green
+        Write-Information "Changes pushed to GitHub" -InformationAction Continue
         
-        Write-Host "Sync completed successfully!" -ForegroundColor Green
+        Write-Information "Sync completed successfully!" -InformationAction Continue
     }
     else {
-        Write-Host "No changes to sync" -ForegroundColor Gray
+        Write-Verbose "No changes to sync"
     }
 }
 
 if ($Watch) {
-    Write-Host "Watching for changes... Press Ctrl+C to stop" -ForegroundColor Magenta
+    Write-Information "Watching for changes... Press Ctrl+C to stop" -InformationAction Continue
     
     # Create FileSystemWatcher
     $watcher = New-Object System.IO.FileSystemWatcher
@@ -53,9 +53,9 @@ if ($Watch) {
         
         # Ignore .git directory
         if ($path -notlike "*.git*") {
-            Write-Host "Change detected: $changeType - $path" -ForegroundColor Yellow
+            Write-Information "Change detected: $changeType - $path" -InformationAction Continue
             Start-Sleep -Seconds 2  # Wait for file operations to complete
-            Sync-GitRepository -Message "Auto-sync: $changeType - $(Split-Path $path -Leaf)"
+            Update-GitRepository -Message "Auto-sync: $changeType - $(Split-Path $path -Leaf)"
         }
     }
     
@@ -72,7 +72,7 @@ if ($Watch) {
 }
 else {
     # Single sync
-    Sync-GitRepository -Message $CommitMessage
+    Update-GitRepository -Message $CommitMessage
 }
 
 # Usage examples:

@@ -10,8 +10,8 @@ param(
     [switch]$DisableNotifications = $false
 )
 
-# Global configuration
-$Global:Config = @{
+# Script configuration
+$script:Config = @{
     MaxRetries = 3
     RetryDelay = 2
     MaxLogSize = 10MB
@@ -28,7 +28,7 @@ function Initialize-Logging {
     }
     
     # Rotate log if too large
-    if ((Test-Path $script:LogPath) -and (Get-Item $script:LogPath).Length -gt $Global:Config.MaxLogSize) {
+    if ((Test-Path $script:LogPath) -and (Get-Item $script:LogPath).Length -gt $script:Config.MaxLogSize) {
         $backupPath = $script:LogPath -replace '\.log$', '-backup.log'
         if (Test-Path $backupPath) { Remove-Item $backupPath -Force }
         Rename-Item $script:LogPath $backupPath -Force
@@ -57,7 +57,7 @@ function Write-LogMessage {
     }
     catch {
         # Fallback if log file is locked
-        Write-Host "Log write failed: $_" -ForegroundColor Yellow
+        Write-Warning "Log write failed: $_"
     }
     
     # Console output (unless silent mode or NoConsole)
@@ -70,12 +70,19 @@ function Write-LogMessage {
             "DEBUG" { "Gray" }
             default { "White" }
         }
-        Write-Host $logEntry -ForegroundColor $color
+        switch ($Level) {
+            "ERROR" { Write-Error $logEntry }
+            "WARN" { Write-Warning $logEntry }
+            "SUCCESS" { Write-Information $logEntry -InformationAction Continue }
+            "INFO" { Write-Information $logEntry -InformationAction Continue }
+            "DEBUG" { Write-Verbose $logEntry }
+            default { Write-Information $logEntry -InformationAction Continue }
+        }
     }
 }
 
 # Show notification (Windows 10/11)
-function Show-Notification {
+function Send-Notification {
     param(
         [string]$Title,
         [string]$Message,
@@ -109,7 +116,7 @@ function Show-Notification {
         # Fallback to popup
         try {
             $wshell = New-Object -ComObject wscript.shell
-            $wshell.Popup($Message, $Global:Config.NotificationTimeout, $Title, 64) | Out-Null
+            $wshell.Popup($Message, $script:Config.NotificationTimeout, $Title, 64) | Out-Null
         }
         catch {
             Write-LogMessage "WARN" "Failed to show notification: $_"
@@ -144,19 +151,19 @@ function Get-GitStatus {
 }
 
 # Enhanced sync function with retry logic
-function Sync-GitRepository {
+function Update-GitRepository {
     param([string]$Message)
     
     Write-LogMessage "INFO" "Starting sync operation..."
     
     if (-not (Test-GitRepository)) {
         Write-LogMessage "ERROR" "Not a git repository or git not available"
-        Show-Notification "Git Sync Error" "Not in a git repository" "Error"
+        Send-Notification "Git Sync Error" "Not in a git repository" "Error"
         return $false
     }
     
     $retryCount = 0
-    while ($retryCount -lt $Global:Config.MaxRetries) {
+    while ($retryCount -lt $script:Config.MaxRetries) {
         try {
             # Check for changes
             $status = Get-GitStatus
@@ -169,37 +176,37 @@ function Sync-GitRepository {
                 Write-LogMessage "INFO" "Changes detected, syncing..."
                 
                 # Stage all changes
-                git add -A 2>&1 | ForEach-Object { Write-LogMessage "DEBUG" $_ -NoConsole }
+                git add -A 2>&1 | ForEach-Object { Write-LogMessage -Level "DEBUG" -Message $_ -NoConsole }
                 if ($LASTEXITCODE -ne 0) { throw "Git add failed" }
                 
                 # Commit changes
-                git commit -m $Message 2>&1 | ForEach-Object { Write-LogMessage "DEBUG" $_ -NoConsole }
+                git commit -m $Message 2>&1 | ForEach-Object { Write-LogMessage -Level "DEBUG" -Message $_ -NoConsole }
                 if ($LASTEXITCODE -ne 0) { throw "Git commit failed" }
                 
                 # Push to remote
-                git push 2>&1 | ForEach-Object { Write-LogMessage "DEBUG" $_ -NoConsole }
+                git push 2>&1 | ForEach-Object { Write-LogMessage -Level "DEBUG" -Message $_ -NoConsole }
                 if ($LASTEXITCODE -ne 0) { throw "Git push failed" }
                 
-                Write-LogMessage "SUCCESS" "Sync completed successfully"
-                Show-Notification "Git Sync" "Changes synced successfully" "Info"
+                Write-LogMessage -Level "SUCCESS" -Message "Sync completed successfully"
+                Send-Notification "Git Sync" "Changes synced successfully" "Info"
                 return $true
             }
             else {
-                Write-LogMessage "INFO" "No changes to sync"
+                Write-LogMessage -Level "INFO" -Message "No changes to sync"
                 return $true
             }
         }
         catch {
             $retryCount++
-            Write-LogMessage "ERROR" "Sync attempt $retryCount failed: $_"
+            Write-LogMessage -Level "ERROR" -Message "Sync attempt $retryCount failed: $_"
             
-            if ($retryCount -lt $Global:Config.MaxRetries) {
-                Write-LogMessage "INFO" "Retrying in $($Global:Config.RetryDelay) seconds..."
-                Start-Sleep -Seconds $Global:Config.RetryDelay
+            if ($retryCount -lt $script:Config.MaxRetries) {
+                Write-LogMessage -Level "INFO" -Message "Retrying in $($script:Config.RetryDelay) seconds..."
+                Start-Sleep -Seconds $script:Config.RetryDelay
             }
             else {
-                Write-LogMessage "ERROR" "Sync failed after $($Global:Config.MaxRetries) attempts"
-                Show-Notification "Git Sync Failed" "Failed after $($Global:Config.MaxRetries) attempts" "Error"
+                Write-LogMessage -Level "ERROR" -Message "Sync failed after $($script:Config.MaxRetries) attempts"
+                Send-Notification "Git Sync Failed" "Failed after $($script:Config.MaxRetries) attempts" "Error"
                 return $false
             }
         }
@@ -212,28 +219,28 @@ function Invoke-HealthCheck {
         # Check git availability
         git --version 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            Write-LogMessage "ERROR" "Git is not available"
+            Write-LogMessage -Level "ERROR" -Message "Git is not available"
             return $false
         }
         
         # Check repository status
         if (-not (Test-GitRepository)) {
-            Write-LogMessage "ERROR" "Invalid git repository"
+            Write-LogMessage -Level "ERROR" -Message "Invalid git repository"
             return $false
         }
         
         # Check remote connectivity
         git ls-remote origin HEAD 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            Write-LogMessage "WARN" "Remote connectivity issue"
+            Write-LogMessage -Level "WARN" -Message "Remote connectivity issue"
             return $false
         }
         
-        Write-LogMessage "INFO" "Health check passed"
+        Write-LogMessage -Level "INFO" -Message "Health check passed"
         return $true
     }
     catch {
-        Write-LogMessage "ERROR" "Health check failed: $_"
+        Write-LogMessage -Level "ERROR" -Message "Health check failed: $_"
         return $false
     }
 }
@@ -270,10 +277,10 @@ function Initialize-FileWatcher {
             }
             
             $relativePath = [System.IO.Path]::GetRelativePath((Get-Location), $path)
-            Write-LogMessage "INFO" "Change detected: $changeType - $relativePath"
+            Write-LogMessage -Level "INFO" -Message "Change detected: $changeType - $relativePath"
             
             $message = "Auto-sync: $changeType - $([System.IO.Path]::GetFileName($relativePath))"
-            Sync-GitRepository -Message $message
+            Update-GitRepository -Message $message
         }
         
         # Register events
@@ -285,14 +292,14 @@ function Initialize-FileWatcher {
         return $watcher
     }
     catch {
-        Write-LogMessage "ERROR" "Failed to initialize file watcher: $_"
+        Write-LogMessage -Level "ERROR" -Message "Failed to initialize file watcher: $_"
         return $null
     }
 }
 
 # Cleanup function
 function Stop-AutoSync {
-    Write-LogMessage "INFO" "Stopping auto-sync..."
+    Write-LogMessage -Level "INFO" -Message "Stopping auto-sync..."
     
     # Remove event handlers
     Get-EventSubscriber | Where-Object { $_.SourceIdentifier -like "File*" } | Unregister-Event
@@ -303,8 +310,8 @@ function Stop-AutoSync {
         $script:watcher.Dispose()
     }
     
-    Write-LogMessage "INFO" "Auto-sync stopped cleanly"
-    Show-Notification "Git Auto-Sync" "Stopped" "Info"
+    Write-LogMessage -Level "INFO" -Message "Auto-sync stopped cleanly"
+    Send-Notification "Git Auto-Sync" "Stopped" "Info"
 }
 
 # Signal handler for graceful shutdown
@@ -325,18 +332,18 @@ try {
     
     # Initial health check
     if (-not (Invoke-HealthCheck)) {
-        Write-LogMessage "ERROR" "Health check failed, exiting"
+        Write-LogMessage -Level "ERROR" -Message "Health check failed, exiting"
         exit 1
     }
     
     if ($Watch) {
-        Write-LogMessage "INFO" "Starting watch mode (Interval: $WatchInterval seconds)"
-        Show-Notification "Git Auto-Sync" "Watch mode started" "Info"
+        Write-LogMessage -Level "INFO" -Message "Starting watch mode (Interval: $WatchInterval seconds)"
+        Send-Notification "Git Auto-Sync" "Watch mode started" "Info"
         
         # Initialize file watcher
         $script:watcher = Initialize-FileWatcher
         if (-not $script:watcher) {
-            Write-LogMessage "ERROR" "Failed to start file watcher"
+            Write-LogMessage -Level "ERROR" -Message "Failed to start file watcher"
             exit 1
         }
         
@@ -348,10 +355,10 @@ try {
             Start-Sleep -Seconds 1
             
             # Periodic health check
-            if ((Get-Date).Subtract($lastHealthCheck).TotalSeconds -gt $Global:Config.HealthCheckInterval) {
+            if ((Get-Date).Subtract($lastHealthCheck).TotalSeconds -gt $script:Config.HealthCheckInterval) {
                 if (-not (Invoke-HealthCheck)) {
-                    Write-LogMessage "ERROR" "Health check failed during watch mode"
-                    Show-Notification "Git Sync Warning" "Health check failed" "Warning"
+                    Write-LogMessage -Level "ERROR" -Message "Health check failed during watch mode"
+                    Send-Notification "Git Sync Warning" "Health check failed" "Warning"
                 }
                 $lastHealthCheck = Get-Date
             }
@@ -360,7 +367,7 @@ try {
             if ([console]::KeyAvailable) {
                 $key = [console]::ReadKey($true)
                 if ($key.Key -eq "C" -and $key.Modifiers -eq "Control") {
-                    Write-LogMessage "INFO" "Ctrl+C detected, shutting down..."
+                    Write-LogMessage -Level "INFO" -Message "Ctrl+C detected, shutting down..."
                     break
                 }
             }
@@ -368,8 +375,8 @@ try {
     }
     else {
         # Single sync operation
-        Write-LogMessage "INFO" "Performing single sync operation"
-        $result = Sync-GitRepository -Message $CommitMessage
+        Write-LogMessage -Level "INFO" -Message "Performing single sync operation"
+        $result = Update-GitRepository -Message $CommitMessage
         if ($result) {
             exit 0
         } else {
@@ -378,8 +385,8 @@ try {
     }
 }
 catch {
-    Write-LogMessage "ERROR" "Unexpected error: $_"
-    Show-Notification "Git Sync Error" "Unexpected error occurred" "Error"
+    Write-LogMessage -Level "ERROR" -Message "Unexpected error: $_"
+    Send-Notification "Git Sync Error" "Unexpected error occurred" "Error"
     exit 1
 }
 finally {
